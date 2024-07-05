@@ -47,7 +47,6 @@ dipdat = randn(size(EEG.lf.Gain,3),EEG.pnts)*3;
 
 figure(1), clf
 
-
 for di=1:length(dipoleLoc)
     
     % FIR1 filtered noise
@@ -106,7 +105,10 @@ Rr = R*(1-gamma) + eye(EEG.nbchan)*gamma*mean(eig(R));
 for fi=1:numfrex
     
     % filter data
-    fdat = filterFGx(EEG.data,EEG.srate,frex(fi),stds(fi),1);
+    fdat = filterFGx(EEG.data,EEG.srate,frex(fi),stds(fi),0);
+    
+    fig = figure;
+    imagesc(fdat)
     
     %%% compute S
     % full S
@@ -118,12 +120,13 @@ for fi=1:numfrex
     end
     % global variance normalize (optional; this scales the eigenspectrum)
     S = S / (std(S(:))/std(R(:)));
-    
+  
     % GED
     [W,L] = eig(S,Rr);
+    
     [evals(fi,:),sidx] = sort(diag(L),'descend');
     W = W(:,sidx);
-
+    
     % store top component mapp and eigenvector
     maps(fi,:) = W(:,1)'*S;
     evecs(fi,:) = W(:,1);
@@ -213,21 +216,21 @@ for i=1:3
     
     % ground truth
     subplot(3,3,i)
-    topoplotIndie(groundTruth,EEG.chanlocs,'numcontour',0,'electrodes','off');
+    topoplotIndie(groundTruth,EEG.chanlocs,'numcontour',0,'electrodes','on');
     title([ 'GT: ' num2str(mean(dipfrex{i})) ' Hz' ])
     
     % maps
     subplot(3,3,i+3)
     m = pca(maps(freqbands==i,:));
     m = m(:,1)*sign(corr(m(:,1),groundTruth));
-    topoplotIndie(m,EEG.chanlocs,'numcontour',0,'electrodes','off');
+    topoplotIndie(m,EEG.chanlocs,'numcontour',0,'electrodes','on');
     title([ 'Maps: ' num2str(round(mean(frex(freqbands==i)),2)) ' Hz' ])
     
     % eigenvectors
     subplot(3,3,i+3+3)
     m = pca(evecs(freqbands==i,:));
     m = m(:,1)*sign(corr(m(:,1),groundTruth));
-    topoplotIndie(m,EEG.chanlocs,'numcontour',0,'electrodes','off');
+    topoplotIndie(m,EEG.chanlocs,'numcontour',0,'electrodes','on');
     title([ 'E-vecs: ' num2str(round(mean(frex(freqbands==i)),2)) ' Hz' ])
 end
 
