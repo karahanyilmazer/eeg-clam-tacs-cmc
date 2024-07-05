@@ -142,7 +142,7 @@ for i in tqdm(range(len(freqs))):
     W = W[:, sidx]
 
     # Store top component map and eigenvector
-    maps[i, :] = W[:, 0:1].T @ S
+    maps[i, :] = W[:, 0] @ S
     evecs[i, :] = W[:, 0]
 
 # %%
