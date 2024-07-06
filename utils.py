@@ -160,3 +160,17 @@ def filterFGx(data, srate, f, fwhm, show_plot=False):
         plt.show()
 
     return filt_data, emp_vals, fx
+
+
+def read_raw(subject):
+    dir_name = join(get_base_dir(), 'eeg-clam-tacs-cmc', 'data', subject)
+    raw = read_raw_brainvision(join(dir_name, 'Relax.vhdr'), preload=True)
+    raw.drop_channels(['envelope', 'envelope_am', 'force'])
+    raw.set_montage(make_standard_montage('easycap-M1'), match_case=False)
+
+    # Remove the bad channels
+    bad_idx = loadmat(join(dir_name, 'exclude_idx.mat'))['exclude_idx'].squeeze() - 1
+    bad_chs = [raw.ch_names[idx] for idx in bad_idx]
+    raw.drop_channels(bad_chs)
+
+    return raw
