@@ -7,9 +7,8 @@ import mne
 import numpy as np
 from mne.time_frequency import psd_array_welch
 from mne.viz import plot_topomap
-from mpl_toolkits.axes_grid1 import ImageGrid, inset_locator, make_axes_locatable
+from mpl_toolkits.axes_grid1 import inset_locator
 from scipy import linalg
-from scipy.io import loadmat
 
 from utils import get_base_dir, get_cmap, read_raw, set_fig_dpi, set_style
 
@@ -18,21 +17,22 @@ base_dir, cmap, _, _ = get_base_dir(), get_cmap('parula'), set_style(), set_fig_
 
 
 # %%
-def get_P_TARGET(raw, l_freq, h_freq):
+def get_P_TARGET(raw, l_freq, h_freq, df):
     data_signal = (
         raw.copy()
         .filter(l_freq, h_freq, l_trans_bandwidth=1, h_trans_bandwidth=1)
         ._data
-    )  # alpha
+    )
     data_noise = (
         raw.copy()
-        .filter(8, 16, l_trans_bandwidth=1, h_trans_bandwidth=1)
-        .filter(14, 10, l_trans_bandwidth=1, h_trans_bandwidth=1)
+        .filter(l_freq - df, h_freq + df, l_trans_bandwidth=1, h_trans_bandwidth=1)
+        .filter(h_freq, l_freq, l_trans_bandwidth=1, h_trans_bandwidth=1)
         ._data
     )
     data_broad = (
         raw.copy().filter(1, 30, l_trans_bandwidth=1, h_trans_bandwidth=1)._data
     )
+
     A = np.cov(data_signal)
     B = np.cov(data_noise)
     evals, evecs = linalg.eig(A, B)
@@ -70,15 +70,12 @@ def get_P_TARGET(raw, l_freq, h_freq):
 
 # %%
 # Read in the data
-data_folder = r'C:\Files\Coding\Python\Neuro\eeg-clam-tacs-cmc\data\FS_10'
-raw = mne.io.read_raw_brainvision(join(data_folder, 'Relax.vhdr'), preload=True)
-raw.drop_channels(['envelope', 'envelope_am', 'force'])
-raw.set_montage(make_standard_montage('easycap-M1'), match_case=False)
+raw = read_raw('FS_10')
 
-# Remove the bad channels
-bad_idx = loadmat(join(data_folder, 'exclude_idx.mat'))['exclude_idx'].squeeze() - 1
-bad_chs = [raw.ch_names[idx] for idx in bad_idx]
-raw.drop_channels(bad_chs)
+# Define the SSD parameters
+l_freq, h_freq = 10, 14
+df = 2
+M, pf = get_P_TARGET(raw, l_freq, h_freq, df)
 
 # forward_model = loadmat(join(data_folder, 'P_TARGET_64.mat'))['P_TARGET_64'].squeeze()
 # mask_bad = forward_model == 0
@@ -88,8 +85,6 @@ raw.drop_channels(bad_chs)
 # raw.drop_channels(bads)
 
 # %%
-df = 2
-l_freq, h_freq = 10, 14
 x_s = raw.copy().filter(l_freq, h_freq, l_trans_bandwidth=1, h_trans_bandwidth=1)._data
 x_n = (
     raw.copy()
