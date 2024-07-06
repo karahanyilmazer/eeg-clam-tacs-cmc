@@ -11,7 +11,15 @@ clear
 
 %% load data file
 
-load([ homedir 'proc\' num2str(subIClist{datai,1}) '_proc.mat' ])
+% load([ homedir 'proc\' num2str(subIClist{datai,1}) '_proc.mat' ])
+load data.mat
+load emptyEEG.mat
+EEG.data = double(data);
+EEG.srate = double(srate);
+EEG.pnts = double(size(data, 2));
+EEG.nbchan = double(size(data, 1));
+EEG.times = double(times);
+
 
 %% possible additional data cleaning or preparation...
 
