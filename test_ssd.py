@@ -1,14 +1,20 @@
 # %%
-from os.path import join
-
+# !%matplotlib qt
+# !%load_ext autoreload
+# !%autoreload 2
 import matplotlib.pyplot as plt
 import mne
 import numpy as np
-from mne.channels import make_standard_montage
 from mne.time_frequency import psd_array_welch
 from mne.viz import plot_topomap
+from mpl_toolkits.axes_grid1 import ImageGrid, inset_locator, make_axes_locatable
 from scipy import linalg
 from scipy.io import loadmat
+
+from utils import get_base_dir, get_cmap, read_raw, set_fig_dpi, set_style
+
+# Set figure and path settings
+base_dir, cmap, _, _ = get_base_dir(), get_cmap('parula'), set_style(), set_fig_dpi()
 
 
 # %%
@@ -44,10 +50,21 @@ def get_P_TARGET(raw, l_freq, h_freq):
         )
         freq_mask = np.logical_and(freqs > l_freq, freqs < h_freq)
         peak_freq = freqs[freq_mask][np.argmax(psd[freq_mask])]
-        plt.semilogy(freqs, psd)
-        plt.title(f'{ix_comp:d}: PF = {peak_freq:.2f} Hz')
-        plot_topomap(M[:, ix_comp], raw.info)
+
+        _, ax = plt.subplots()
+        ax.axvline(peak_freq, color='grey', ls='--', lw=0.5)
+        ax.semilogy(freqs, psd)
+
+        axins = inset_locator.inset_axes(
+            ax, width='30%', height='30%', loc='upper right'
+        )
+        plot_topomap(M[:, ix_comp], raw.info, axes=axins)
+
+        ax.set_title(f'Component {ix_comp:d}: PF = {peak_freq:.2f} Hz')
+        ax.set_xlabel('Frequency (Hz)')
+        ax.set_ylabel('PSD (dB/Hz)')
         plt.show()
+
     return M[:, 3], peak_freq
 
 
