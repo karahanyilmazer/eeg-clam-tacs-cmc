@@ -1,20 +1,23 @@
-import os
 import sys
+from os.path import dirname, join
 
 import matplotlib.pyplot as plt
 import numpy as np
 import scienceplots
 from matplotlib.colors import LinearSegmentedColormap
+from mne.channels import make_standard_montage
+from mne.io import read_raw_brainvision
 from scipy.fft import fft, ifft
-from scipy.signal import detrend, hilbert
+from scipy.io import loadmat
+from scipy.signal import hilbert
 from yaml import safe_load
 
-curr_dir = os.path.dirname(__file__)
+curr_dir = dirname(__file__)
 
 
 def get_base_dir():
     # Load the config file
-    f_name = os.path.join(curr_dir, 'preprocessing_parameters.yaml')
+    f_name = join(curr_dir, 'preprocessing_parameters.yaml')
     with open(f_name, 'r') as file:
         config = safe_load(file)
 
@@ -48,7 +51,7 @@ def set_fig_dpi():
 
 def get_cmap(name):
     # Load the (parula) cmap
-    f_name = os.path.join(curr_dir, f'{name}.yaml')
+    f_name = join(curr_dir, f'{name}.yaml')
     with open(f_name, 'r') as file:
         cmap = safe_load(file)['cmap']
         cmap = LinearSegmentedColormap.from_list(name, cmap)
