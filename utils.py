@@ -165,9 +165,9 @@ def filterFGx(data, srate, f, fwhm, show_plot=False):
     return filt_data, emp_vals, fx
 
 
-def read_raw(subject):
+def read_raw(subject, cond='Relax'):
     dir_name = join(get_base_dir(), 'eeg-clam-tacs-cmc', 'data', subject)
-    raw = read_raw_brainvision(join(dir_name, 'Relax.vhdr'), preload=True)
+    raw = read_raw_brainvision(join(dir_name, f'{cond}.vhdr'), preload=True)
     try:
         raw.drop_channels(['envelope', 'envelope_am', 'force'])
     except ValueError:
