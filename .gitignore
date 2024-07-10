@@ -161,3 +161,5 @@ cython_debug/
 
 # Own files
 data
+img
+*.mat
