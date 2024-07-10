@@ -179,4 +179,7 @@ def read_raw(subject):
     bad_chs = [raw.ch_names[idx] for idx in bad_idx]
     raw.drop_channels(bad_chs)
 
+    # Add the subject info
+    raw.info['subject_info'] = {'id': subject.split('_')[1], 'his_id': subject}
+
     return raw
