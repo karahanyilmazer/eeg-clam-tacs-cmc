@@ -1,4 +1,5 @@
 import sys
+from os import makedirs
 from os.path import dirname, join
 
 import matplotlib.pyplot as plt
@@ -7,6 +8,10 @@ import scienceplots
 from matplotlib.colors import LinearSegmentedColormap
 from mne.channels import make_standard_montage
 from mne.io import read_raw_brainvision
+from mne.time_frequency import psd_array_welch
+from mne.viz import plot_topomap
+from mpl_toolkits.axes_grid1 import inset_locator
+from scipy import linalg
 from scipy.fft import fft, ifft
 from scipy.io import loadmat
 from scipy.signal import hilbert
@@ -190,3 +195,103 @@ def read_raw(subject, cond='Relax'):
     raw.info['subject_info'] = {'id': subject.split('_')[1], 'his_id': subject}
 
     return raw
+
+
+def get_P_TARGET(raw, l_freq, h_freq, df, n_comps=4, save=False):
+    data_signal = (
+        raw.copy()
+        .filter(l_freq, h_freq, l_trans_bandwidth=1, h_trans_bandwidth=1)
+        ._data
+    )
+    data_noise = (
+        raw.copy()
+        .filter(l_freq - df, h_freq + df, l_trans_bandwidth=1, h_trans_bandwidth=1)
+        .filter(h_freq, l_freq, l_trans_bandwidth=1, h_trans_bandwidth=1)
+        ._data
+    )
+    data_broad = (
+        raw.copy().filter(1, 30, l_trans_bandwidth=1, h_trans_bandwidth=1)._data
+    )
+
+    A = np.cov(data_signal)
+    B = np.cov(data_noise)
+    evals, evecs = linalg.eig(A, B)
+    ix = np.argsort(evals)[::-1]
+    D = evecs[:, ix].T
+    M = linalg.pinv(D)
+
+    if n_comps == 'all':
+        n_comps = M.shape[0]
+
+    for ix_comp in range(n_comps):
+        psd, freqs = psd_array_welch(
+            D[ix_comp] @ data_broad,
+            raw.info['sfreq'],
+            fmin=1,
+            fmax=30,
+            n_fft=int(3 * raw.info['sfreq']),
+        )
+        freq_mask = np.logical_and(freqs > l_freq, freqs < h_freq)
+        peak_freq = freqs[freq_mask][np.argmax(psd[freq_mask])]
+
+        fig, ax = plt.subplots()
+        ax.axvline(peak_freq, color='black', ls='--', lw=0.5)
+        ax.semilogy(freqs, psd, color='#045275')
+        ax.axvspan(l_freq - df, l_freq, alpha=0.1, color='#F0746E')
+        ax.axvspan(h_freq, h_freq + df, alpha=0.1, color='#F0746E')
+        ax.axvspan(l_freq, h_freq, alpha=0.1, color='#7CCBA2')
+
+        axins = inset_locator.inset_axes(
+            ax, width='30%', height='30%', loc='upper right'
+        )
+        plot_topomap(M[:, ix_comp], raw.info, axes=axins)
+
+        ax.set_title(f'Component {ix_comp:d}', loc='left')
+        ax.set_xlabel('Frequency (Hz)')
+        ax.set_ylabel('PSD (dB/Hz)')
+
+        text_str = '\n'.join(
+            (
+                f'$f_S={l_freq}-{h_freq}$ Hz',
+                f'$f_N={l_freq-df}-{h_freq+df}$ Hz',
+            )
+        )
+        props = dict(facecolor='none', edgecolor='black')
+
+        ax_pos = ax.get_position()
+        fig.text(
+            ax_pos.x1 - 0.007,
+            1 - ax_pos.y0,
+            text_str,
+            horizontalalignment='right',
+            verticalalignment='bottom',
+            bbox=props,
+            transform=fig.transFigure,
+        )
+        ax.text(
+            peak_freq + 0.2,
+            0.94,
+            f'$PF={peak_freq:.2f}$ Hz',
+            horizontalalignment='left',
+            verticalalignment='bottom',
+            transform=ax.get_xaxis_transform(),
+            color='black',
+        )
+
+        folder_path = join(dirname(__file__), 'img', f'{l_freq}-{h_freq}Hz')
+        makedirs(folder_path, exist_ok=True)
+
+        if save:
+            plt.savefig(
+                join(
+                    folder_path,
+                    f'ssd-{raw.info["subject_info"]["his_id"]}-comp_{ix_comp}.png',
+                ),
+                dpi=300,
+            )
+            plt.close()
+
+        else:
+            plt.show()
+
+    return M, D, freqs, psd, peak_freq
