@@ -175,8 +175,15 @@ def read_raw(subject, cond='Relax'):
     raw.set_montage(make_standard_montage('easycap-M1'), match_case=False)
 
     # Remove the bad channels
+    with open(join(curr_dir, 'preprocessing_parameters.yaml'), 'r') as file:
+        config = safe_load(file)
+
     bad_idx = loadmat(join(dir_name, 'exclude_idx.mat'))['exclude_idx'].squeeze() - 1
     bad_chs = [raw.ch_names[idx] for idx in bad_idx]
+
+    if config['bad_channels'][subject]:
+        bad_chs.extend(config['bad_channels'][subject])
+
     raw.drop_channels(bad_chs)
 
     # Add the subject info
