@@ -33,8 +33,15 @@ ssd = SSD()
 ssd.fit(raw, l_freq, h_freq, df)
 ssd.plot(comp_idx=alpha_comp, prefix='Alpha', save=False)
 ssd.fit_fooof(config, plot=True)
-alpha, beta = ssd.adjust_freq_bands(config['gauss_thr'][subj])
+alpha, beta, peaks = ssd.adjust_freq_bands(config['gauss_thr'][subj], plot=False)
 
+config['alpha_range'][subj] = [float(freq) for freq in alpha]
+config['beta_range'][subj] = [float(freq) for freq in beta]
+config['alpha_peak'][subj] = float(ssd.fm.freqs[peaks[0]])
+config['beta_peak'][subj] = float(ssd.fm.freqs[peaks[0]])
+
+with open('config.yaml', 'w') as file:
+    safe_dump(config, file, sort_keys=False)
 
 # %%
 ssd_alpha = SSD()
