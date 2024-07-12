@@ -1,12 +1,15 @@
 base_dir_win: "C:/Files/Coding/Python/Neuro"
 base_dir_mac: "/Users/karahan/coding/python/neuro"
 
+
+# SSD parameters
+
 l_freq: 10
 h_freq: 14
 df: 2
 
-ssd_component:
-  'FS_01': 49
+alpha_comp:
+  'FS_01': 0
   'FS_03': 1
   'FS_04': 1
   'FS_06': 2
@@ -15,8 +18,22 @@ ssd_component:
   'FS_10': 0
   'FS_11': 0
 
+beta_comp:
+  'FS_01': 0
+  'FS_03': 0
+  'FS_04': 0
+  'FS_06': 0
+  'FS_07': 0
+  'FS_09': 0
+  'FS_10': 0
+  'FS_11': 1
+
+# Preprocessing parameters
+
 bad_channels:
-  'FS_01': null
+  'FS_01':
+    - 'F6'
+    - 'T8'
   'FS_03': null
   'FS_06':
     - 'AF8'
@@ -31,10 +48,15 @@ bad_channels:
     - 'T8'
   'FS_07': null
   'FS_09':
+    - 'F6'
     - 'F7'
     - 'F8'
+    - 'FC6'
+    - 'FT8'
   'FS_10': null
   'FS_11': null
+
+# FOOOF parameters
 
 fooof_freq_range:
   'FS_01': [3, 30]
@@ -47,7 +69,7 @@ fooof_freq_range:
   'FS_11': [3, 30]
 
 fooof_max_peaks:
-  'FS_01': 2
+  'FS_01': 3
   'FS_03': 2
   'FS_04': 2
   'FS_06': 3
@@ -73,5 +95,5 @@ gauss_thr:
   'FS_06': 0.15
   'FS_07': 0.15
   'FS_09': 0.15
-  'FS_10': 0.15
+  'FS_10': 0.1
   'FS_11': 0.15
