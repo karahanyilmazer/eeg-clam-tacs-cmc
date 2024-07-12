@@ -97,3 +97,45 @@ gauss_thr:
   'FS_09': 0.15
   'FS_10': 0.1
   'FS_11': 0.15
+
+# Resulting frequency ranges
+
+alpha_range:
+  'FS_01': null
+  'FS_03': null
+  'FS_04': null
+  'FS_06': null
+  'FS_07': null
+  'FS_09': null
+  'FS_10': null
+  'FS_11': null
+
+alpha_peak:
+  'FS_01': null
+  'FS_03': null
+  'FS_04': null
+  'FS_06': null
+  'FS_07': null
+  'FS_09': null
+  'FS_10': null
+  'FS_11': null
+
+beta_range:
+  'FS_01': null
+  'FS_03': null
+  'FS_04': null
+  'FS_06': null
+  'FS_07': null
+  'FS_09': null
+  'FS_10': null
+  'FS_11': null
+
+beta_peak:
+  'FS_01': null
+  'FS_03': null
+  'FS_04': null
+  'FS_06': null
+  'FS_07': null
+  'FS_09': null
+  'FS_10': null
+  'FS_11': null
