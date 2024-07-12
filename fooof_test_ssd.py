@@ -1,23 +1,19 @@
 # %%
-# !%matplotlib qt
+# !%matplotlib inline
 # !%load_ext autoreload
 # !%autoreload 2
 import os
 import sys
 
-sys.path.insert(0, os.path.join(base_dir, 'eeg-classes'))
-
-import numpy as np
-from fooof import FOOOF
-from mne.time_frequency import psd_array_welch
-from scipy.signal import find_peaks
-from src.source_space.SSD import SSD
-from yaml import safe_load
+from yaml import safe_dump, safe_load
 
 from utils import get_base_dir, get_cmap, read_raw, set_fig_dpi, set_style
 
 # Set figure and path settings
 base_dir, cmap, _, _ = get_base_dir(), get_cmap('parula'), set_style(), set_fig_dpi()
+sys.path.insert(0, os.path.join(base_dir, 'eeg-classes'))
+from src.source_space.SSD import SSD
+
 # %%
 # Read in the data
 subj = 'FS_03'
