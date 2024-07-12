@@ -22,7 +22,7 @@ curr_dir = dirname(__file__)
 
 def get_base_dir():
     # Load the config file
-    f_name = join(curr_dir, 'preprocessing_parameters.yaml')
+    f_name = join(curr_dir, 'config.yaml')
     with open(f_name, 'r') as file:
         config = safe_load(file)
 
@@ -180,7 +180,7 @@ def read_raw(subject, cond='Relax'):
     raw.set_montage(make_standard_montage('easycap-M1'), match_case=False)
 
     # Remove the bad channels
-    with open(join(curr_dir, 'preprocessing_parameters.yaml'), 'r') as file:
+    with open(join(curr_dir, 'config.yaml'), 'r') as file:
         config = safe_load(file)
 
     bad_idx = loadmat(join(dir_name, 'exclude_idx.mat'))['exclude_idx'].squeeze() - 1
