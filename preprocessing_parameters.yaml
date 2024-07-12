@@ -1,2 +1,77 @@
 base_dir_win: "C:/Files/Coding/Python/Neuro"
 base_dir_mac: "/Users/karahan/coding/python/neuro"
+
+l_freq: 10
+h_freq: 14
+df: 2
+
+ssd_component:
+  'FS_01': 49
+  'FS_03': 1
+  'FS_04': 1
+  'FS_06': 2
+  'FS_07': 0
+  'FS_09': 2
+  'FS_10': 0
+  'FS_11': 0
+
+bad_channels:
+  'FS_01': null
+  'FS_03': null
+  'FS_06':
+    - 'AF8'
+    - 'Fz'
+    - 'F9'
+    - 'FC4'
+    - 'FC6'
+    - 'FT7'
+    - 'FT8'
+    - 'Fpz'
+    - 'T7'
+    - 'T8'
+  'FS_07': null
+  'FS_09':
+    - 'F7'
+    - 'F8'
+  'FS_10': null
+  'FS_11': null
+
+fooof_freq_range:
+  'FS_01': [3, 30]
+  'FS_03': [3, 30]
+  'FS_04': [3, 30]
+  'FS_06': [3, 30]
+  'FS_07': [3, 30]
+  'FS_09': [3, 30]
+  'FS_10': [3, 30]
+  'FS_11': [3, 30]
+
+fooof_max_peaks:
+  'FS_01': 2
+  'FS_03': 2
+  'FS_04': 2
+  'FS_06': 3
+  'FS_07': 2
+  'FS_09': 2
+  'FS_10': 2
+  'FS_11': 2
+
+fooof_aperiodic_mode:
+  'FS_01': 'fixed'
+  'FS_03': 'fixed'
+  'FS_04': 'fixed'
+  'FS_06': 'fixed'
+  'FS_07': 'fixed'
+  'FS_09': 'fixed'
+  'FS_10': 'knee'
+  'FS_11': 'fixed'
+
+gauss_thr:
+  'FS_01': 0.15
+  'FS_03': 0.15
+  'FS_04': 0.15
+  'FS_06': 0.15
+  'FS_07': 0.15
+  'FS_09': 0.15
+  'FS_10': 0.15
+  'FS_11': 0.15
