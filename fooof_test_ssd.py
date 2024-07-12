@@ -26,22 +26,23 @@ with open('config.yaml', 'r') as file:
 l_freq = config['l_freq']
 h_freq = config['h_freq']
 df = config['df']
+alpha_comp = config['alpha_comp'][subj]
+beta_comp = config['beta_comp'][subj]
 
 ssd = SSD()
 ssd.fit(raw, l_freq, h_freq, df)
-ssd.plot(n_comps=1, prefix='Alpha', save=False)
-ssd.fit_fooof(config)
+ssd.plot(comp_idx=alpha_comp, prefix='Alpha', save=False)
+ssd.fit_fooof(config, plot=True)
 alpha, beta = ssd.adjust_freq_bands(config['gauss_thr'][subj])
 
-# %%
-config['alpha_range'] = alpha
-config['beta_range'] = beta
 
+# %%
 ssd_alpha = SSD()
 ssd_alpha.fit(raw, alpha[0], alpha[1], df)
-ssd_alpha.plot(n_comps=1, prefix='Alpha', save=False)
+ssd_alpha.plot(comp_idx=alpha_comp, prefix='Alpha', save=False)
 
+# %%
 ssd_beta = SSD()
 ssd_beta.fit(raw, beta[0], beta[1], df)
-ssd_beta.plot(n_comps=1, prefix='Beta', save=False)
+ssd_beta.plot(comp_idx=beta_comp, prefix='Beta', save=False)
 # %%
