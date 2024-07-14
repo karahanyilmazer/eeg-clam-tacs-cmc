@@ -26,6 +26,7 @@ with open('config.yaml', 'r') as file:
 l_freq = config['l_freq']
 h_freq = config['h_freq']
 df = config['df']
+orig_comp = config['orig_comp'][subj]
 alpha_comp = config['alpha_comp'][subj]
 beta_comp = config['beta_comp'][subj]
 base_dir = config['base_dir_win'] if sys.platform == 'win32' else config['base_dir_mac']
@@ -34,7 +35,7 @@ img_folder = 'img'
 # Apply the SSD
 ssd = SSD()
 ssd.fit(raw, l_freq, h_freq, df)
-ssd.plot(n_comps=3, img_folder=img_folder, save=False)
+ssd.plot(comp_idx=orig_comp, img_folder=img_folder, save=False)
 ssd.fit_fooof(config, plot=False)
 alpha, beta, peaks = ssd.adjust_freq_bands(config['gauss_thr'][subj], plot=False)
 
