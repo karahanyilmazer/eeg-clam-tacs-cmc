@@ -31,14 +31,13 @@ raw = read_raw(subj)
 with open('config.yaml', 'r') as file:
     config = safe_load(file)
 
+img_folder = 'img'
+df = config['df']
 l_freq = config['l_freq']
 h_freq = config['h_freq']
-df = config['df']
 orig_comp = config['orig_comp'][subj]
 alpha_comp = config['alpha_comp'][subj]
 beta_comp = config['beta_comp'][subj]
-base_dir = config['base_dir_win'] if sys.platform == 'win32' else config['base_dir_mac']
-img_folder = 'img'
 
 # Apply the SSD
 ssd = SSD()
