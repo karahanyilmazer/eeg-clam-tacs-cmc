@@ -1,3 +1,11 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Adjust the frequency borders for the alpha and beta bands using FOOOF fits.
+
+@author: Karahan Yilmazer
+"""
+
 # %%
 # !%matplotlib qt
 # !%load_ext autoreload
