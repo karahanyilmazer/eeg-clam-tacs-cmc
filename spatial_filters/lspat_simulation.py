@@ -1,25 +1,29 @@
 # %%
+# !%load_ext autoreload
+# !%autoreload 2
 import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils import filterFGx, get_base_dir, get_cmap
+
+sys.path.insert(0, os.path.join(get_base_dir(), 'eeg-classes'))
 
 import matplotlib.pyplot as plt
 import numpy as np
 import scienceplots
 from mne import create_info
+from mne.io import RawArray
 from mne.viz import plot_topomap
 from numpy.fft import fft, ifft
 from scipy.io import loadmat
 from scipy.linalg import eigh, pinv, toeplitz
 from scipy.signal import detrend, hilbert
 from sklearn.decomposition import FastICA
+from src.source_space.SSD import SSD
 
 plt.rcParams.update({'figure.dpi': 300})
-
 plt.style.use(['science', 'no-latex'])
-
-from utils import filterFGx, get_cmap
 
 # %%
 # Load data from the mat file
@@ -30,7 +34,7 @@ lf = mat['lf'][0, 0][2]
 orig_EEG = EEG.copy()
 
 # Filter parameters
-freqs = np.logspace(np.log10(2), np.log10(80), 10)
+freqs = np.logspace(np.log10(4), np.log10(80), 10)
 fwhm_filt = 2
 fwhm_anal = 5
 
@@ -39,21 +43,25 @@ dip_loc1 = 93
 dip_loc2 = 204
 orientation = 0  # 0 for "EEG" and 1 for "MEG"
 
+# Define the filters to evaluate
+filters = {'Best Electrode': 0, 'PCA': 1, 'JD': 2, 'GEDb': 3, 'SSD': 4}
+
 # Initialize variables
 n_ch = EEG['nbchan'][0, 0]
 times = EEG['times'][0]
 srate = EEG['srate'][0, 0]
 n_pnts = EEG['pnts'][0, 0]
 ch_names = [el[0] for el in EEG['chanlocs']['labels'][0]]
-
-filters = {'Best Electrode': 0, 'PCA': 1, 'JD': 2, 'GEDb': 3}
 spat_maps = np.zeros((n_ch, len(freqs), len(filters), 2))
 corr_data = np.full((len(freqs), len(filters), 2), np.nan)
 snrs = np.full((len(freqs), len(filters), 2), np.nan)
-
-# Find time indices
 xmin, xmax = EEG['xmin'].item(), EEG['xmax'].item()
 t_idx = np.searchsorted(times, [xmin + 0.5, xmax - 0.5])
+
+# Create an info object for topo plotting and SSD
+info = create_info(ch_names=ch_names, sfreq=srate, ch_types='eeg')
+info['subject_info'] = {'his_id': 'simulation'}
+info.set_montage('standard_1020')
 
 # %%
 # Loop over frequencies
@@ -221,33 +229,21 @@ for fi, freq in enumerate(freqs):
         f = np.abs(fft(ged_data) / EEG['pnts']) ** 2
         snrs[fi, filt_num, noise_i] = f[freq_idx] / np.mean(f[np.r_[f_low, f_high]])
 
-        # # SSD
+        # SSD
         # ==============================================================================
-        # filt_num = filters['SSD']
+        filt_num = filters['SSD']
 
-        # # try:
-        # _, maps, _, _, ssddata = ssd(
-        #     EEG['data'].T,
-        #     np.array(
-        #         [[freq - 2, freq + 2], [freq - 4, freq + 4], [freq - 3, freq + 3]]
-        #     ),
-        #     srate,
-        #     2,
-        #     None,
-        # )
+        ssd = SSD()
+        raw = RawArray(EEG['data'], info)
+        ssd.fit(raw, freq - 2, freq + 2, 2)
 
-        # idx = np.argmax(np.abs(maps[:, 0]))
-        # spat_maps[:, fi, filt_num, noise_i] = maps[:, 0] * np.sign(maps[idx, 0])
-
-        # corr_data[fi, filt_num, noise_i] = (
-        #     np.corrcoef(ssddata[:, 0], signal1)[0, 1] ** 2
-        # )
-
-        # f = np.abs(fft(ssddata[:, 0]) / EEG['pnts']) ** 2
-        # snrs[fi, filt_num, noise_i] = f[freq_idx] / np.mean(f[np.r_[f_low, f_high]])
-
-        # # except Exception as e:
-        # #     print(f"Error in SSD: {e}")
+        idx = np.argmax(np.abs(ssd.M[:, 0]))
+        spat_maps[:, fi, filt_num, noise_i] = ssd.M[:, 0] * np.sign(ssd.M[idx, 0])
+        corr_data[fi, filt_num, noise_i] = (
+            np.corrcoef(ssd.X_ssd[:, 0], signal1)[0, 1] ** 2
+        )
+        f = np.abs(fft(ssd.X_ssd[:, 0]) / EEG['pnts']) ** 2
+        snrs[fi, filt_num, noise_i] = f[freq_idx] / np.mean(f[np.r_[f_low, f_high]])
 
 # %%
 # Assuming freqs, spatmaps are already defined
@@ -368,10 +364,6 @@ plt.savefig(os.path.join('img', 'intermap_corr.png'))
 plt.show()
 
 # %%
-# Define the EEG channel locations, assuming you have an mne.Info object (info) for this
-info = create_info(ch_names=ch_names, sfreq=srate, ch_types='eeg')
-info.set_montage('standard_1020')
-
 # Find the indices of the frequencies
 frequencies = np.array([3, 9, 20, 40, 70])
 freqs_to_plot = [np.abs(freqs - f).argmin() for f in frequencies]
