@@ -18,7 +18,7 @@ from mne.viz import plot_topomap
 from numpy.fft import fft, ifft
 from scipy.io import loadmat
 from scipy.linalg import eigh, pinv, toeplitz
-from scipy.signal import detrend, hilbert
+from scipy.signal import butter, detrend, filtfilt, hilbert
 from sklearn.decomposition import FastICA
 from src.source_space.SSD import SSD
 
@@ -34,7 +34,7 @@ lf = mat['lf'][0, 0][2]
 orig_EEG = EEG.copy()
 
 # Filter parameters
-freqs = np.logspace(np.log10(4), np.log10(80), 10)
+freqs = np.logspace(np.log10(8), np.log10(80), 10)
 fwhm_filt = 2
 fwhm_anal = 5
 
@@ -233,17 +233,88 @@ for fi, freq in enumerate(freqs):
         # ==============================================================================
         filt_num = filters['SSD']
 
-        ssd = SSD()
-        raw = RawArray(EEG['data'], info)
-        ssd.fit(raw, freq - 2, freq + 2, 2)
+        df = 2
+        l_freq = freq - df
+        h_freq = freq + df
+        filter_order = 4
 
-        idx = np.argmax(np.abs(ssd.M[:, 0]))
-        spat_maps[:, fi, filt_num, noise_i] = ssd.M[:, 0] * np.sign(ssd.M[idx, 0])
-        corr_data[fi, filt_num, noise_i] = (
-            np.corrcoef(ssd.X_ssd[:, 0], signal1)[0, 1] ** 2
+        # Creating filters
+        b, a = butter(
+            filter_order,
+            np.array([l_freq, h_freq]) / (srate / 2),
+            btype='bandpass',
         )
-        f = np.abs(fft(ssd.X_ssd[:, 0]) / EEG['pnts']) ** 2
+        b_f, a_f = butter(
+            filter_order,
+            np.array([l_freq - df, h_freq + df]) / (srate / 2),
+            btype='bandpass',
+        )
+        b_s, a_s = butter(
+            filter_order,
+            np.array([l_freq - 1, h_freq + 1]) / (srate / 2),
+            btype='bandstop',
+        )
+
+        X = EEG['data']
+
+        # Covariance matrix for the center frequencies (signal)
+        X_s = filtfilt(b, a, X, axis=1)
+        C_s = np.cov(X_s)
+
+        # Covariance matrix for the flanking frequencies (noise)
+        X_n = filtfilt(b_f, a_f, X, axis=1)
+        X_n = filtfilt(b_s, a_s, X_n, axis=1)
+        C_n = np.cov(X_n)
+        # del X_n
+
+        # Eigen decomposition of C
+        D, V = eigh(C_s)
+
+        # Sort eigenvalues in descending order and sort eigenvectors accordingly
+        # Indices for sorting eigenvalues in descending order
+        sort_idx = np.argsort(D)[::-1]
+        ev_sorted = D[sort_idx]  # Sorted eigenvalues
+        V = V[:, sort_idx]  # Sorted eigenvectors
+
+        # Estimate the rank of the data
+        tol = ev_sorted[0] * 10**-6
+        r = np.sum(ev_sorted > tol)
+
+        if r < X_s.shape[0]:
+            print(
+                f'SSD: Input data does not have full rank. Only {r} components can be computed.'
+            )
+            M = V[:, :r] @ np.diag(ev_sorted[:r] ** -0.5)
+        else:
+            M = np.eye(X_s.shape[0])
+
+        # Compute reduced covariance matrices
+        C_s_r = M.T @ C_s @ M
+        C_n_r = M.T @ C_n @ M
+
+        # Solve the generalized eigenvalue problem
+        D, W = eigh(C_s_r, C_s_r + C_n_r)
+
+        # Sort eigenvalues and eigenvectors in descending order
+        sort_idx = np.argsort(D)[::-1]
+        # lambda_sorted = D[sort_idx]
+        W = W[:, sort_idx]
+
+        # Compute final matrix W
+        W = M @ W
+
+        # Compute matrix A with patterns in columns
+        A = C_s @ W @ np.linalg.inv(W.T @ C_s @ W)
+
+        # Apply SSD filters to the data if needed (assuming we want to compute it)
+        X_ssd = W.T @ X_s
+
+        idx = np.argmax(np.abs(A[:, 0]))
+        spat_maps[:, fi, filt_num, noise_i] = A[:, 0] * np.sign(A[idx, 0])
+        corr_data[fi, filt_num, noise_i] = np.corrcoef(X_ssd[0, :], signal1)[0, 1] ** 2
+        f = np.abs(fft(X_ssd[0, :]) / EEG['pnts']) ** 2
         snrs[fi, filt_num, noise_i] = f[freq_idx] / np.mean(f[np.r_[f_low, f_high]])
+
 
 # %%
 # Assuming freqs, spatmaps are already defined
