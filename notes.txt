@@ -1,0 +1,4 @@
+- FS_14 bad channel
+- FS_17 sketchy --> discarded but can be taken back
+- FS_19 very noisy --> discarded --> cropped and got back in the game
+- FS_23 bad channel

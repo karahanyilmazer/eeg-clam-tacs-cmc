@@ -175,10 +175,16 @@ def filterFGx(data, srate, f, fwhm, show_plot=False):
 def read_raw(subject, cond='Relax'):
     dir_name = join(get_base_dir(), 'eeg-clam-tacs-cmc', 'data', subject)
     raw = read_raw_brainvision(join(dir_name, f'{cond}.vhdr'), preload=True)
-    try:
-        raw.drop_channels(['envelope', 'envelope_am', 'force'])
-    except ValueError:
-        raw.drop_channels(['envelope', 'envelope_am', 'ecg'])
+
+    chs_non_eeg = ['envelope', 'envelope_am']
+    if 'force' in raw.ch_names:
+        chs_non_eeg.append('force')
+    if 'ecg' in raw.ch_names:
+        chs_non_eeg.append('ecg')
+    if 'eda' in raw.ch_names:
+        chs_non_eeg.append('eda')
+
+    raw.drop_channels(chs_non_eeg)
     raw.set_montage(make_standard_montage('easycap-M1'), match_case=False)
 
     # Remove the bad channels
@@ -192,6 +198,8 @@ def read_raw(subject, cond='Relax'):
         bad_chs.extend(config['bad_channels'][subject])
 
     raw.drop_channels(bad_chs)
+
+    raw.crop(tmin=config['cropping'][subject][0], tmax=config['cropping'][subject][1])
 
     # Add the subject info
     raw.info['subject_info'] = {'id': subject.split('_')[1], 'his_id': subject}
