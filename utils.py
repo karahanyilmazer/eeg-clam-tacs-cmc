@@ -89,11 +89,13 @@ def filterFGx(data, srate, f, fwhm, show_plot=False):
     """
 
     # Input check
+    if data.ndim == 1:
+        data = data[np.newaxis, :]
+
     if data.shape[0] > data.shape[1]:
-        # raise ValueError(
-        #     'Data dimensions may be incorrect. Data should be channels x time.'
-        # )
-        pass
+        raise ValueError(
+            'Data dimensions may be incorrect. Data should be channels x time.'
+        )
 
     if (f - fwhm) < 0:
         # raise ValueError('Increase frequency or decrease FWHM.')
