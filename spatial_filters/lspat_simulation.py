@@ -111,12 +111,6 @@ for fi, freq in enumerate(freqs):
 
     signal1 = signal1[0, t_idx[0] : t_idx[1] + 1]
 
-    # EEG['data'] = loadmat('data.mat')['data']
-    # filt_data = loadmat('filtdat.mat')['filtdat']
-    # filt_cov = loadmat('filtcov.mat')['filtcov']
-    # bb_cov = loadmat('bbcov.mat')['bbcov']
-    # signal1 = loadmat('signal1.mat')['signal1']
-
     for noise_i in range(2):
         if noise_i == 1:
             # Replace O1 with pure noise
@@ -236,7 +230,7 @@ for fi, freq in enumerate(freqs):
         df = 2
         l_freq = freq - df
         h_freq = freq + df
-        filter_order = 4
+        filter_order = 2
 
         # Creating filters
         b, a = butter(
