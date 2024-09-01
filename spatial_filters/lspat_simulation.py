@@ -59,6 +59,7 @@ fwhm_anal = 5
 # dip_loc1 = 93
 # dip_loc2 = 204
 dip_loc1 = 445
+dip_loc2 = 456
 orientation = 1  # 0 for "EEG" and 1 for "MEG"
 
 # Define the filters to evaluate
@@ -89,7 +90,7 @@ for fi, freq in enumerate(freqs):
     EEG = orig_EEG.copy()
 
     dip_freq1 = freq
-    dip_freq2 = dip_freq1 + np.random.rand() * 5 + 1
+    dip_freq2 = dip_freq1 * 2
 
     # Create data time series
     amp1 = 10 + 10 * filterFGx(np.random.randn(n_pnts), srate, 3, 10)[0]
@@ -97,10 +98,10 @@ for fi, freq in enumerate(freqs):
     k1 = (dip_freq1 / srate) * 2 * np.pi / dip_freq1
     signal1 = amp1 * np.sin(2 * np.pi * dip_freq1 * times + k1 * np.cumsum(freq_mod1))
 
-    # amp2 = 10 + 10 * filterFGx(np.random.randn(n_pnts), srate, 3, 10)[0]
-    # freq_mod2 = detrend(10 * filterFGx(np.random.randn(n_pnts), srate, 3, 10)[0])
-    # k2 = (dip_freq2 / srate) * 2 * np.pi / dip_freq2
-    # signal2 = amp2 * np.sin(2 * np.pi * dip_freq2 * times + k2 * np.cumsum(freq_mod2))
+    amp2 = 10 + 10 * filterFGx(np.random.randn(n_pnts), srate, 3, 10)[0]
+    freq_mod2 = detrend(10 * filterFGx(np.random.randn(n_pnts), srate, 3, 10)[0])
+    k2 = (dip_freq2 / srate) * 2 * np.pi / dip_freq2
+    signal2 = amp2 * np.sin(2 * np.pi * dip_freq2 * times + k2 * np.cumsum(freq_mod2))
 
     # Create dipole data
     pwr_spec = filterFGx(
