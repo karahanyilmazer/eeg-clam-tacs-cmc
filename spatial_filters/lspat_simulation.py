@@ -50,8 +50,9 @@ lf = mat['lf'][0, 0][2]
 orig_EEG = EEG.copy()
 
 # Filter parameters
-freqs = np.logspace(np.log10(8), np.log10(80), 10)
+# freqs = np.logspace(np.log10(8), np.log10(80), 10)
 # freqs = np.array([11, 22, 33])
+freqs = np.array([11])
 fwhm_filt = 2
 fwhm_anal = 5
 
@@ -480,20 +481,20 @@ plt.show()
 
 # %%
 # Find the indices of the frequencies
-frequencies = np.array([3, 9, 20, 40, 70])
-frequencies = np.array([11, 22, 40, 60, 80])
+frequencies = freqs
 freqs_to_plot = [np.abs(freqs - f).argmin() for f in frequencies]
 
 cmap = get_cmap('parula')
 fig, axes = plt.subplots(
     len(frequencies),
     len(filters),
-    figsize=(len(frequencies) * 2, len(filters) * 2),
+    figsize=(len(frequencies) * 8, len(filters) * 0.5),
 )
+axes = axes.ravel()
 
 for fi in range(len(frequencies)):
     for filti in range(len(filters)):
-        ax = axes[fi, filti]
+        ax = axes[fi * len(filters) + filti]
 
         # Extract the real part of the spatial map
         data = np.real(spat_maps[:, freqs_to_plot[fi], filti, 0])
@@ -523,12 +524,13 @@ cmap = get_cmap('parula')
 fig, axes = plt.subplots(
     len(frequencies),
     len(filters),
-    figsize=(len(frequencies) * 2, len(filters) * 2),
+    figsize=(len(frequencies) * 8, len(filters) * 0.5),
 )
+axes = axes.ravel()
 
 for fi in range(len(frequencies)):
     for filti in range(len(filters)):
-        ax = axes[fi, filti]
+        ax = axes[fi * len(filters) + filti]
 
         data = np.real(spat_maps[:, freqs_to_plot[fi], filti, 1])
         plot_topomap(data, info, axes=ax, show=False, contours=0, cmap=cmap)
