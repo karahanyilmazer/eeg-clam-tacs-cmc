@@ -13,14 +13,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scienceplots
 from mne import create_info
-from mne.io import RawArray
 from mne.viz import plot_topomap
 from numpy.fft import fft, ifft
 from scipy.io import loadmat
 from scipy.linalg import eigh, pinv, toeplitz
 from scipy.signal import butter, detrend, filtfilt, hilbert
-from sklearn.decomposition import FastICA
-from src.source_space.SSD import SSD
 
 plt.rcParams.update({'figure.dpi': 300})
 plt.style.use(['science', 'no-latex'])
@@ -59,9 +56,10 @@ fwhm_filt = 2
 fwhm_anal = 5
 
 # Indices of dipole locations
-dip_loc1 = 93
-dip_loc2 = 204
-orientation = 0  # 0 for "EEG" and 1 for "MEG"
+# dip_loc1 = 93
+# dip_loc2 = 204
+dip_loc1 = 445
+orientation = 1  # 0 for "EEG" and 1 for "MEG"
 
 # Define the filters to evaluate
 filters = {'Best Electrode': 0, 'PCA': 1, 'JD': 2, 'GEDb': 3, 'SSD': 4}
@@ -99,10 +97,10 @@ for fi, freq in enumerate(freqs):
     k1 = (dip_freq1 / srate) * 2 * np.pi / dip_freq1
     signal1 = amp1 * np.sin(2 * np.pi * dip_freq1 * times + k1 * np.cumsum(freq_mod1))
 
-    amp2 = 10 + 10 * filterFGx(np.random.randn(n_pnts), srate, 3, 10)[0]
-    freq_mod2 = detrend(10 * filterFGx(np.random.randn(n_pnts), srate, 3, 10)[0])
-    k2 = (dip_freq2 / srate) * 2 * np.pi / dip_freq2
-    signal2 = amp2 * np.sin(2 * np.pi * dip_freq2 * times + k2 * np.cumsum(freq_mod2))
+    # amp2 = 10 + 10 * filterFGx(np.random.randn(n_pnts), srate, 3, 10)[0]
+    # freq_mod2 = detrend(10 * filterFGx(np.random.randn(n_pnts), srate, 3, 10)[0])
+    # k2 = (dip_freq2 / srate) * 2 * np.pi / dip_freq2
+    # signal2 = amp2 * np.sin(2 * np.pi * dip_freq2 * times + k2 * np.cumsum(freq_mod2))
 
     # Create dipole data
     pwr_spec = filterFGx(
@@ -122,7 +120,7 @@ for fi, freq in enumerate(freqs):
     )
 
     data[:, dip_loc1] = signal1 + np.random.randn(n_pnts)
-    data[:, dip_loc2] = signal2 + np.random.randn(n_pnts)
+    # data[:, dip_loc2] = signal2 + np.random.randn(n_pnts)
 
     # Simulated EEG data
     tmp_data = (data @ lf[:, orientation, :].T).T
@@ -482,6 +480,7 @@ plt.show()
 # %%
 # Find the indices of the frequencies
 frequencies = np.array([3, 9, 20, 40, 70])
+frequencies = np.array([11, 22, 40, 60, 80])
 freqs_to_plot = [np.abs(freqs - f).argmin() for f in frequencies]
 
 cmap = get_cmap('parula')
