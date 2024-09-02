@@ -42,6 +42,80 @@ def compute_plv(signal1, signal2):
     return plv
 
 
+def ssd(X, l_freq, h_freq, df, log=True):
+    # Creating filters
+    b, a = butter(
+        filter_order,
+        np.array([l_freq, h_freq]) / (srate / 2),
+        btype='bandpass',
+    )
+    b_f, a_f = butter(
+        filter_order,
+        np.array([l_freq - df, h_freq + df]) / (srate / 2),
+        btype='bandpass',
+    )
+    b_s, a_s = butter(
+        filter_order,
+        np.array([l_freq - 1, h_freq + 1]) / (srate / 2),
+        btype='bandstop',
+    )
+
+    # Covariance matrix for the center frequencies (signal)
+    X_s = filtfilt(b, a, X, axis=1)
+    C_s = np.cov(X_s)
+
+    # Covariance matrix for the flanking frequencies (noise)
+    X_n = filtfilt(b_f, a_f, X, axis=1)
+    X_n = filtfilt(b_s, a_s, X_n, axis=1)
+    C_n = np.cov(X_n)
+    del X_n
+
+    # Eigen decomposition of C
+    D, V = eigh(C_s)
+
+    # Sort eigenvalues in descending order and sort eigenvectors accordingly
+    # Indices for sorting eigenvalues in descending order
+    sort_idx = np.argsort(D)[::-1]
+    ev_sorted = D[sort_idx]  # Sorted eigenvalues
+    V = V[:, sort_idx]  # Sorted eigenvectors
+
+    # Estimate the rank of the data
+    tol = ev_sorted[0] * 10**-6
+    r = np.sum(ev_sorted > tol)
+
+    if r < X_s.shape[0]:
+        if log:
+            print(
+                f'SSD: Input data does not have full rank. Only {r} components can be computed.'
+            )
+        M = V[:, :r] @ np.diag(ev_sorted[:r] ** -0.5)
+    else:
+        M = np.eye(X_s.shape[0])
+
+    # Compute reduced covariance matrices
+    C_s_r = M.T @ C_s @ M
+    C_n_r = M.T @ C_n @ M
+
+    # Solve the generalized eigenvalue problem
+    D, W = eigh(C_s_r, C_s_r + C_n_r)
+
+    # Sort eigenvalues and eigenvectors in descending order
+    sort_idx = np.argsort(D)[::-1]
+    # lambda_sorted = D[sort_idx]
+    W = W[:, sort_idx]
+
+    # Compute final matrix W
+    W = M @ W
+
+    # Compute matrix A with patterns in columns
+    A = C_s @ W @ np.linalg.inv(W.T @ C_s @ W)
+
+    # Apply SSD filters to the data if needed (assuming we want to compute it)
+    X_ssd = W.T @ X_s
+
+    return X_ssd, A
+
+
 # Load data from the mat file
 mat = loadmat('emptyEEG.mat')
 EEG = mat['EEG'][0, 0]
@@ -261,76 +335,7 @@ for fi, freq in enumerate(freqs):
         h_freq = freq + df
         filter_order = 2
 
-        # Creating filters
-        b, a = butter(
-            filter_order,
-            np.array([l_freq, h_freq]) / (srate / 2),
-            btype='bandpass',
-        )
-        b_f, a_f = butter(
-            filter_order,
-            np.array([l_freq - df, h_freq + df]) / (srate / 2),
-            btype='bandpass',
-        )
-        b_s, a_s = butter(
-            filter_order,
-            np.array([l_freq - 1, h_freq + 1]) / (srate / 2),
-            btype='bandstop',
-        )
-
-        X = EEG['data']
-
-        # Covariance matrix for the center frequencies (signal)
-        X_s = filtfilt(b, a, X, axis=1)
-        C_s = np.cov(X_s)
-
-        # Covariance matrix for the flanking frequencies (noise)
-        X_n = filtfilt(b_f, a_f, X, axis=1)
-        X_n = filtfilt(b_s, a_s, X_n, axis=1)
-        C_n = np.cov(X_n)
-        # del X_n
-
-        # Eigen decomposition of C
-        D, V = eigh(C_s)
-
-        # Sort eigenvalues in descending order and sort eigenvectors accordingly
-        # Indices for sorting eigenvalues in descending order
-        sort_idx = np.argsort(D)[::-1]
-        ev_sorted = D[sort_idx]  # Sorted eigenvalues
-        V = V[:, sort_idx]  # Sorted eigenvectors
-
-        # Estimate the rank of the data
-        tol = ev_sorted[0] * 10**-6
-        r = np.sum(ev_sorted > tol)
-
-        if r < X_s.shape[0]:
-            print(
-                f'SSD: Input data does not have full rank. Only {r} components can be computed.'
-            )
-            M = V[:, :r] @ np.diag(ev_sorted[:r] ** -0.5)
-        else:
-            M = np.eye(X_s.shape[0])
-
-        # Compute reduced covariance matrices
-        C_s_r = M.T @ C_s @ M
-        C_n_r = M.T @ C_n @ M
-
-        # Solve the generalized eigenvalue problem
-        D, W = eigh(C_s_r, C_s_r + C_n_r)
-
-        # Sort eigenvalues and eigenvectors in descending order
-        sort_idx = np.argsort(D)[::-1]
-        # lambda_sorted = D[sort_idx]
-        W = W[:, sort_idx]
-
-        # Compute final matrix W
-        W = M @ W
-
-        # Compute matrix A with patterns in columns
-        A = C_s @ W @ np.linalg.inv(W.T @ C_s @ W)
-
-        # Apply SSD filters to the data if needed (assuming we want to compute it)
-        X_ssd = W.T @ X_s
+        X_ssd, A = ssd(EEG['data'], l_freq, h_freq, df)
 
         idx = np.argmax(np.abs(A[:, 0]))
         spat_maps[:, fi, filt_num, noise_i] = A[:, 0] * np.sign(A[idx, 0])
