@@ -211,7 +211,7 @@ cropping:
     - 302
   FS_06:
     - 0
-    - null
+    - 303
   FS_07:
     - 4
     - null
