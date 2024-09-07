@@ -173,7 +173,7 @@ def filterFGx(data, srate, f, fwhm, show_plot=False):
 
 
 def read_raw(subject, cond='Relax'):
-    dir_name = join(get_base_dir(), 'eeg-clam-tacs-cmc', 'data', subject)
+    dir_name = join(get_base_dir(), 'eeg-clam-tacs-cmc', 'data', 'EEG', subject)
     raw = read_raw_brainvision(join(dir_name, f'{cond}.vhdr'), preload=True)
 
     chs_non_eeg = ['envelope', 'envelope_am']
