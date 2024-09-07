@@ -196,7 +196,7 @@ for fi, freq in enumerate(freqs):
     )
 
     data[:, dip_loc1] = signal1 + np.random.randn(n_pnts)
-    # data[:, dip_loc2] = signal2 + np.random.randn(n_pnts)
+    data[:, dip_loc2] = signal2 + np.random.randn(n_pnts)
 
     # Simulated EEG data
     tmp_data = (data @ lf[:, orientation, :].T).T

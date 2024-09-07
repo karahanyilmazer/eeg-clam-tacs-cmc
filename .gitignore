@@ -164,3 +164,4 @@ data
 img
 *.mat
 clam tacs - simulation
+*.code-workspace
