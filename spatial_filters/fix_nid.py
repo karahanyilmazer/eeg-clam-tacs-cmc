@@ -5,6 +5,7 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from jadeR import jadeR
 from utils import filterFGx, get_base_dir, get_cmap
 
 sys.path.insert(0, os.path.join(get_base_dir(), 'eeg-classes'))
@@ -13,6 +14,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scienceplots
 from mne import create_info
+from mne.io import RawArray
+from mne.preprocessing import ICA
 from mne.viz import plot_topomap
 from numpy.fft import fft, ifft
 from scipy.io import loadmat
@@ -43,7 +46,7 @@ def compute_plv(signal1, signal2):
     return plv
 
 
-def ssd_orig(X, l_freq, h_freq, df, reduce=True, log=True):
+def ssd_orig(X, l_freq, h_freq, df, n=None, reduce=True, scale=False, log=True):
     # Creating filters
     b, a = butter(
         filter_order,
@@ -52,7 +55,7 @@ def ssd_orig(X, l_freq, h_freq, df, reduce=True, log=True):
     )
     b_f, a_f = butter(
         filter_order,
-        np.array([l_freq - df, h_freq + df]) / (srate / 2),
+        np.array([l_freq - 2, h_freq + 2]) / (srate / 2),
         btype='bandpass',
     )
     b_s, a_s = butter(
@@ -98,12 +101,15 @@ def ssd_orig(X, l_freq, h_freq, df, reduce=True, log=True):
     C_n_r = M.T @ C_n @ M
 
     # Solve the generalized eigenvalue problem
-    D, W = eigh(C_s_r, C_n_r)
+    D, W = eigh(C_s_r, C_s_r + C_n_r)
 
     # Sort eigenvalues and eigenvectors in descending order
     sort_idx = np.argsort(D)[::-1]
     # lambda_sorted = D[sort_idx]
     W = W[:, sort_idx]
+
+    if n:
+        W = W[:, :n]
 
     # Compute final matrix W
     W = M @ W
@@ -114,7 +120,12 @@ def ssd_orig(X, l_freq, h_freq, df, reduce=True, log=True):
     # Apply SSD filters to the data if needed (assuming we want to compute it)
     X_ssd = W.T @ X_s
 
-    return X_ssd, A
+    if scale:
+        std_W = np.std(W, axis=0)
+        W = W / std_W
+        X_ssd = (X_ssd.T * std_W).T
+
+    return X_ssd, A, W
 
 
 # Load data from the mat file
@@ -197,6 +208,7 @@ data[:, dip_loc2] = signal2 + np.random.randn(n_pnts)
 # Simulated EEG data
 tmp_data = lf[:, orientation, :] @ data.T
 EEG['data'] = tmp_data[:, t_idx[0] : t_idx[1] + 1]
+# EEG['data'] = loadmat('data.mat')['data']
 EEG['pnts'] = EEG['data'].shape[1]
 EEG['times'] = times[t_idx[0] : t_idx[1] + 1]
 
@@ -245,39 +257,210 @@ for fi, freq in enumerate([dip_freq1, dip_freq2]):
     f = np.abs(fft(ged_data) / EEG['pnts']) ** 2
     snrs[fi, filt_num, 0] = f[freq_idx] / np.mean(f[np.r_[f_low, f_high]])
 
+# %%
+import numpy as np
+from scipy.signal import hilbert
+from scipy.stats import kurtosis
+
+
+def phase_locking(x1, x2, p, q):
+    """
+    Computes the phase locking value of two signals.
+
+    Parameters:
+    x1 : numpy.ndarray
+        First signal (1D or 2D array).
+    x2 : numpy.ndarray
+        Second signal (1D or 2D array).
+    p : int
+        Frequency multiplier for the first signal.
+    q : int
+        Frequency multiplier for the second signal.
+
+    Returns:
+    Synch_ind : numpy.ndarray or float
+        Phase locking value matrix if inputs are 2D arrays, otherwise a single float value.
+    """
+    # Calculate the phase of the Hilbert transform for both signals
+    phi_p = np.unwrap(np.angle(hilbert(x1, axis=0)))
+    phi_q = np.unwrap(np.angle(hilbert(x2, axis=0)))
+
+    # Get the dimensions of the input signals
+    N1 = x1.shape[1] if x1.ndim > 1 else 1
+    N2 = x2.shape[1] if x2.ndim > 1 else 1
+
+    # Initialize phase locking value based on input dimensions
+    if N1 > 1 and N2 > 1:
+        Synch_ind = np.zeros((N1, N2))
+        for k in range(N1):
+            for j in range(N2):
+                Psi_pq = np.mod(q * phi_p[:, k] - p * phi_q[:, j], 2 * np.pi)
+                Synch_ind[k, j] = np.abs(np.mean(np.exp(1j * Psi_pq)))
+    else:
+        Psi_pq = np.mod(q * phi_p - p * phi_q, 2 * np.pi)
+        Synch_ind = np.abs(np.mean(np.exp(1j * Psi_pq)))
+
+    return Synch_ind
+
+
+# Define vector mismatch function
+def vec_mismatch(v1, v2):
+    return 1 - np.abs(np.dot(v1, v2)) / (
+        np.sqrt(np.sum(v1**2)) * np.sqrt(np.sum(v2**2))
+    )
+
+
+# Define the negentropy function
+def negentropy(x):
+    return np.power(kurtosis(x) - 3, 2) / 48 + np.power(np.mean(np.power(x, 3)), 2) / 12
+
 
 # NID
 # ==============================================================================
 filt_num = filters['NID']
 print('NID')
 
-df = 2
+df1 = dip_freq1 / 10
+df2 = dip_freq2 / 10
 filter_order = 2
+f_base = 11
 f_m = 1
 f_n = 2
+n_sources = 2
+n_comp_ica = 2 * n_sources
 X = EEG['data']
 
-X_ssd1, A1 = ssd_orig(EEG['data'], dip_freq1 - df, dip_freq1 + df, df, reduce=True)
-X_ssd2, A2 = ssd_orig(EEG['data'], dip_freq2 - df, dip_freq2 + df, df, reduce=True)
+jade_flag = True
+e5_flag = True
+not_converge = [False, False]
+
+X_ssd1, A1, W1 = ssd_orig(
+    X, dip_freq1 - df1, dip_freq1 + df1, df1, n=n_sources, scale=True
+)
+X_ssd2, A2, W2 = ssd_orig(
+    X, dip_freq2 - df2, dip_freq2 + df2, df2, n=n_sources, scale=True
+)
 
 X_stacked = np.vstack([X_ssd1, X_ssd2])
 
-ica = FastICA()
-ica.fit(X_stacked.T)
-A_ica = ica.mixing_
+# %%
+if e5_flag:
+    # ica = FastICA(n_components=n_comp_ica, method='fastica', max_iter='auto')
+    # ica.fit(X_stacked.T)
+    # A_fica = ica.mixing_
+    ica = ICA(n_components=n_comp_ica, method='fastica', max_iter='auto')
+    ch_names_tmp = [f'CH{i}' for i in range(X_stacked.shape[0])]
+    info_tmp = create_info(ch_names=ch_names_tmp, sfreq=srate, ch_types='eeg')
+    raw_tmp = RawArray(X_stacked, info_tmp)
+    ica.fit(raw_tmp)
+    A_fica = ica.mixing_matrix_
+    X_stacked_ica_e5 = ica.apply(raw_tmp)._data
 
-A_final1 = A1 @ A_ica[: A1.shape[1], :]
-A_final2 = A2 @ A_ica[A1.shape[1] :, :]
+if jade_flag:
+    A_jade = jadeR(X_stacked, n_comp_ica)
+    X_stacked_ica_jade = A_jade @ X_stacked
 
-idx = np.argmax(np.abs(A_final1[:, 0]))
-spat_maps[:, 0, 5, 0] = A_final1[:, 0] * np.sign(A_final1[idx, 0])
+A_final_1 = []
+A_final_2 = []
+for i in range(n_sources):
+    A = [A1, A2][i]
+    A_final_1.append(A @ A_fica[i * n_sources : (i + 1) * n_sources, :])
+    A_final_2.append(A @ A_jade[i * n_sources : (i + 1) * n_sources, :])
+
+A_final_1 = np.array(A_final_1)  # FastICA
+A_final_2 = np.array(A_final_2)  # JADE
+
+X_ssd1_e5 = (A_fica[:, :n_sources] @ X_ssd1).T
+X_ssd2_e5 = (A_fica[:, n_sources:] @ X_ssd2).T
+
+sync_e5 = phase_locking(X_ssd1_e5, X_ssd2_e5, f_m, f_n)
+
+X_ssd1_jade = (A_jade[:, :n_sources] @ X_ssd1).T
+X_ssd2_jade = (A_jade[:, n_sources:] @ X_ssd2).T
+
+sync_jade = phase_locking(X_ssd1_jade, X_ssd2_jade, f_m, f_n)
+
+
+K1, K2 = [], []
+K3 = list(range(n_comp_ica))
+
+# Double loop to calculate pattern angle for each pair
+for k in range(n_comp_ica - 1):
+    for j in range(k + 1, n_comp_ica):
+        err1 = vec_mismatch(A_final_1[0, :, k], A_final_1[0, :, j])
+        err2 = vec_mismatch(A_final_1[1, :, k], A_final_1[1, :, j])
+        if err1 < 0.1 and err2 < 0.1:
+            K1.append(k)
+            K2.append(j)
+
+# Compute negentropy and select minimum
+f1 = negentropy(X_stacked_ica_e5[K1, :].T)
+f2 = negentropy(X_stacked_ica_e5[K2, :].T)
+ii = np.argmin([f1, f2])
+# Ks1 = [K1, K2][ii]
+Ks1 = np.unique(np.array(K1) * (~ii) + np.array(K2) * ii)
+K3 = [k for k in K3 if k not in Ks1]
+
+# Calculate the synchronized factor and sort indices
+CC = np.diag(sync_e5)
+sort_indices = np.argsort(negentropy(X_stacked_ica_e5[K3, :].T) * CC[K3])[::-1]
+idx_src_e5 = [K3[i] for i in sort_indices[:n_sources]]
+
+K1, K2 = [], []
+K3 = list(range(n_comp_ica))
+
+# Double loop for jade pattern angle calculation
+for k in range(n_comp_ica - 1):
+    for j in range(k + 1, n_comp_ica):
+        err1 = vec_mismatch(A_final_2[0, :, k], A_final_2[0, :, j])
+        err2 = vec_mismatch(A_final_2[1, :, k], A_final_2[1, :, j])
+        if err1 < 0.1 and err2 < 0.1:
+            K1.append(k)
+            K2.append(j)
+
+# Compute negentropy and select minimum
+f1 = negentropy(X_stacked_ica_jade[K1, :].T)
+f2 = negentropy(X_stacked_ica_jade[K2, :].T)
+ii = np.argmin([f1, f2])
+Ks1 = np.unique(np.array(K1) * (~ii) + np.array(K2) * ii)
+K3 = [k for k in K3 if k not in Ks1]
+
+# Calculate the synchronized factor and sort indices
+CC = np.diag(sync_jade)
+sort_indices = np.argsort(negentropy(X_stacked_ica_jade[K3, :].T) * CC[K3])[::-1]
+idx_src_jade = [K3[i] for i in sort_indices[:n_sources]]
+
+# Initial variable settings
+St0 = 2
+Success = 1
+
+# Calculate negentropy for both methods
+negent_E5 = negentropy(X_stacked_ica_e5[idx_src_e5, :].T)
+negent_jade = negentropy(X_stacked_ica_jade[idx_src_jade, :].T)
+St0 = negent_jade.mean() >= negent_E5.mean()
+
+if St0 == 1:
+    print('JADE')
+    idx_src = idx_src_jade
+    sync = sync_jade
+    A_final_p = A_final_2[0, :, idx_src].T
+    A_final_q = A_final_2[1, :, idx_src].T
+elif St0 == 0:
+    print('fastICA')
+    idx_src = idx_src_e5
+    sync = sync_e5
+    A_final_p = A_final_1[0, :, idx_src].T
+    A_final_q = A_final_1[1, :, idx_src].T
+
+idx = np.argmax(np.abs(A_final_p[:, 0]))
+spat_maps[:, 0, 5, 0] = A_final_p[:, 0] * np.sign(A_final_p[idx, 0])
 corr_data[0, 5, 0] = np.corrcoef(X_ssd1[0, :], signal1)[0, 1] ** 2
 plvs[0, 5, 0] = compute_plv(X_ssd1[0, :], signal1)
 f = np.abs(fft(X_ssd1[0, :]) / EEG['pnts']) ** 2
 # snrs[0, 5, 0] = f[freq_idx] / np.mean(f[np.r_[f_low, f_high]])
 
-idx = np.argmax(np.abs(A_final2[:, 0]))
-spat_maps[:, 1, 5, 0] = A_final2[:, 0] * np.sign(A_final2[idx, 0])
+idx = np.argmax(np.abs(A_final_q[:, 0]))
+spat_maps[:, 1, 5, 0] = A_final_q[:, 0] * np.sign(A_final_q[idx, 0])
 corr_data[1, 5, 0] = np.corrcoef(X_ssd2[0, :], signal2)[0, 1] ** 2
 plvs[1, 5, 0] = compute_plv(X_ssd2[0, :], signal2)
 f = np.abs(fft(X_ssd2[0, :]) / EEG['pnts']) ** 2
@@ -309,7 +492,6 @@ for fi in range(len(frequencies)):
             info,
             axes=ax,
             show=False,
-            contours=0,
             cmap=cmap,
         )
 
