@@ -66,7 +66,7 @@ alpha, beta, peaks = ssd.adjust_freq_bands(config['gauss_thr'][subj], plot=True)
 config['alpha_range'][subj] = [float(freq) for freq in alpha]
 config['beta_range'][subj] = [float(freq) for freq in beta]
 config['alpha_peak'][subj] = float(ssd.fm.freqs[peaks[0]])
-config['beta_peak'][subj] = float(ssd.fm.freqs[peaks[0]])
+config['beta_peak'][subj] = float(ssd.fm.freqs[peaks[1]])
 
 with open('config.yaml', 'w') as file:
     safe_dump(config, file, sort_keys=False)
