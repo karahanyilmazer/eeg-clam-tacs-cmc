@@ -5,7 +5,7 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from jadeR import jadeR
+from jadeR.jadeR import jadeR
 from utils import filterFGx, get_base_dir, get_cmap
 
 sys.path.insert(0, os.path.join(get_base_dir(), 'eeg-classes'))
@@ -21,6 +21,7 @@ from numpy.fft import fft, ifft
 from scipy.io import loadmat
 from scipy.linalg import eigh, pinv, toeplitz
 from scipy.signal import butter, detrend, filtfilt, hilbert
+from scipy.stats import kurtosis
 from sklearn.decomposition import FastICA
 
 plt.rcParams.update({'figure.dpi': 300})
@@ -46,7 +47,16 @@ def compute_plv(signal1, signal2):
     return plv
 
 
-def ssd_orig(X, l_freq, h_freq, df, n=None, reduce=True, scale=False, log=True):
+def ssd_orig(
+    X,
+    l_freq,
+    h_freq,
+    filter_order=2,
+    n=None,
+    reduce=True,
+    scale=False,
+    log=True,
+):
     # Creating filters
     b, a = butter(
         filter_order,
@@ -126,6 +136,195 @@ def ssd_orig(X, l_freq, h_freq, df, n=None, reduce=True, scale=False, log=True):
         X_ssd = (X_ssd.T * std_W).T
 
     return X_ssd, A, W
+
+
+def phase_locking(x1, x2, p, q):
+    """
+    Computes the phase locking value of two signals.
+
+    Parameters:
+    x1 : numpy.ndarray
+        First signal (1D or 2D array).
+    x2 : numpy.ndarray
+        Second signal (1D or 2D array).
+    p : int
+        Frequency multiplier for the first signal.
+    q : int
+        Frequency multiplier for the second signal.
+
+    Returns:
+    sync_idx : numpy.ndarray or float
+        Phase locking value matrix if inputs are 2D arrays, otherwise a single float value.
+    """
+    # Calculate the phase of the Hilbert transform for both signals
+    phi_p = np.unwrap(np.angle(hilbert(x1, axis=0)))
+    phi_q = np.unwrap(np.angle(hilbert(x2, axis=0)))
+
+    # Get the dimensions of the input signals
+    N1 = x1.shape[1] if x1.ndim > 1 else 1
+    N2 = x2.shape[1] if x2.ndim > 1 else 1
+
+    # Initialize phase locking value based on input dimensions
+    if N1 > 1 and N2 > 1:
+        sync_idx = np.zeros((N1, N2))
+        for k in range(N1):
+            for j in range(N2):
+                psi_pq = np.mod(q * phi_p[:, k] - p * phi_q[:, j], 2 * np.pi)
+                sync_idx[k, j] = np.abs(np.mean(np.exp(1j * psi_pq)))
+    else:
+        psi_pq = np.mod(q * phi_p - p * phi_q, 2 * np.pi)
+        sync_idx = np.abs(np.mean(np.exp(1j * psi_pq)))
+
+    return sync_idx
+
+
+# Define vector mismatch function
+def vec_mismatch(v1, v2):
+    return 1 - np.abs(np.dot(v1, v2)) / (
+        np.sqrt(np.sum(v1**2)) * np.sqrt(np.sum(v2**2))
+    )
+
+
+# Define the negentropy function
+def negentropy(x):
+    return np.power(kurtosis(x) - 3, 2) / 48 + np.power(np.mean(np.power(x, 3)), 2) / 12
+
+
+def nid(X, f_base, p, q, n_sources, scale=True):
+    # Get the peak frequencies of both oscillations
+    f_m = f_base * p
+    f_n = f_base * q
+
+    # Define the frequency range for the flanking frequencies
+    df1 = f_m / 10
+    df2 = f_n / 10
+
+    # Compute the SSD of both oscillations
+    X_ssd_p, A1, W1 = ssd_orig(X, f_m - df1, f_m + df1, n=n_sources, scale=scale)
+    X_ssd_q, A2, W2 = ssd_orig(X, f_n - df2, f_n + df2, n=n_sources, scale=scale)
+
+    # Stack the two SSD components
+    X_aug = np.vstack([X_ssd_p, X_ssd_q])
+
+    # Define the number of ICA components to extract
+    n_comp_ica = 2 * n_sources
+
+    # Track ICA convergence
+    not_converge = [False, False]
+
+    # FastICA
+    try:
+        fica = ICA(
+            n_components=n_comp_ica,
+            method='fastica',
+            max_iter='auto',
+        )
+        ch_names_tmp = [f'CH{i}' for i in range(X_aug.shape[0])]
+        info_tmp = create_info(ch_names_tmp, srate, ch_types='eeg', verbose=False)
+        raw_tmp = RawArray(X_aug, info_tmp, verbose=False)
+        fica.fit(raw_tmp, verbose=False)
+        A_fica = fica.mixing_matrix_
+        X_aug_fica = fica.apply(raw_tmp, verbose=False)._data
+    except Exception as e:
+        print(e)
+        not_converge[0] = True
+
+    # JADE
+    try:
+        A_jade = jadeR(X_aug, n_comp_ica)
+        X_aug_jade = A_jade @ X_aug
+    except Exception as e:
+        print(e)
+        not_converge[1] = True
+
+    # Compute the synchronization index
+    A_final_fica = []
+    A_final_jade = []
+    for i in range(n_sources):
+        A = [A1, A2][i]
+        A_final_fica.append(A @ A_fica[i * n_sources : (i + 1) * n_sources, :])
+        A_final_jade.append(A @ A_jade[i * n_sources : (i + 1) * n_sources, :])
+
+    A_final_fica = np.array(A_final_fica)  # FastICA
+    A_final_jade = np.array(A_final_jade)  # JADE
+
+    X_ssd_p_fica = (A_fica[:, :n_sources] @ X_ssd_p).T
+    X_ssd_q_fica = (A_fica[:, n_sources:] @ X_ssd_q).T
+
+    sync_fica = phase_locking(X_ssd_p_fica, X_ssd_q_fica, f_m, f_n)
+
+    X_ssd_p_jade = (A_jade[:, :n_sources] @ X_ssd_p).T
+    X_ssd_q_jade = (A_jade[:, n_sources:] @ X_ssd_q).T
+
+    sync_jade = phase_locking(X_ssd_p_jade, X_ssd_q_jade, f_m, f_n)
+
+    K1, K2 = [], []
+    K3 = list(range(n_comp_ica))
+
+    # Double loop to calculate pattern angle for each pair
+    for k in range(n_comp_ica - 1):
+        for j in range(k + 1, n_comp_ica):
+            err1 = vec_mismatch(A_final_fica[0, :, k], A_final_fica[0, :, j])
+            err2 = vec_mismatch(A_final_fica[1, :, k], A_final_fica[1, :, j])
+            if err1 < 0.1 and err2 < 0.1:
+                K1.append(k)
+                K2.append(j)
+
+    # Compute negentropy and select minimum
+    f1 = negentropy(X_aug_fica[K1, :].T)
+    f2 = negentropy(X_aug_fica[K2, :].T)
+    ii = np.argmin([f1, f2])
+    Ks1 = np.unique(np.array(K1) * (~ii) + np.array(K2) * ii)
+    K3 = [k for k in K3 if k not in Ks1]
+
+    # Calculate the synchronized factor and sort indices
+    CC = np.diag(sync_fica)
+    sort_indices = np.argsort(negentropy(X_aug_fica[K3, :].T) * CC[K3])[::-1]
+    idx_src_fica = [K3[i] for i in sort_indices[:n_sources]]
+
+    K1, K2 = [], []
+    K3 = list(range(n_comp_ica))
+
+    # Double loop for jade pattern angle calculation
+    for k in range(n_comp_ica - 1):
+        for j in range(k + 1, n_comp_ica):
+            err1 = vec_mismatch(A_final_jade[0, :, k], A_final_jade[0, :, j])
+            err2 = vec_mismatch(A_final_jade[1, :, k], A_final_jade[1, :, j])
+            if err1 < 0.1 and err2 < 0.1:
+                K1.append(k)
+                K2.append(j)
+
+    # Compute negentropy and select minimum
+    f1 = negentropy(X_aug_jade[K1, :].T)
+    f2 = negentropy(X_aug_jade[K2, :].T)
+    ii = np.argmin([f1, f2])
+    Ks1 = np.unique(np.array(K1) * (~ii) + np.array(K2) * ii)
+    K3 = [k for k in K3 if k not in Ks1]
+
+    # Calculate the synchronized factor and sort indices
+    CC = np.diag(sync_jade)
+    sort_indices = np.argsort(negentropy(X_aug_jade[K3, :].T) * CC[K3])[::-1]
+    idx_src_jade = [K3[i] for i in sort_indices[:n_sources]]
+
+    # Calculate negentropy for both methods
+    negent_fica = negentropy(X_aug_fica[idx_src_fica, :].T)
+    negent_jade = negentropy(X_aug_jade[idx_src_jade, :].T)
+    St0 = negent_jade.mean() >= negent_fica.mean()
+
+    if St0 == 1:
+        print('Selected JADE')
+        A_final_p = A_final_jade[0, :, idx_src_jade].T
+        A_final_q = A_final_jade[1, :, idx_src_jade].T
+        X_ssd_p = X_ssd_p_jade.T
+        X_ssd_q = X_ssd_q_jade.T
+    elif St0 == 0:
+        print('Selected FastICA')
+        A_final_p = A_final_fica[0, :, idx_src_fica].T
+        A_final_q = A_final_fica[1, :, idx_src_fica].T
+        X_ssd_p = X_ssd_p_fica.T
+        X_ssd_q = X_ssd_q_fica.T
+
+    return A_final_p, A_final_q, X_ssd_p, X_ssd_q
 
 
 # Load data from the mat file
@@ -258,209 +457,22 @@ for fi, freq in enumerate([dip_freq1, dip_freq2]):
     snrs[fi, filt_num, 0] = f[freq_idx] / np.mean(f[np.r_[f_low, f_high]])
 
 # %%
-import numpy as np
-from scipy.signal import hilbert
-from scipy.stats import kurtosis
-
-
-def phase_locking(x1, x2, p, q):
-    """
-    Computes the phase locking value of two signals.
-
-    Parameters:
-    x1 : numpy.ndarray
-        First signal (1D or 2D array).
-    x2 : numpy.ndarray
-        Second signal (1D or 2D array).
-    p : int
-        Frequency multiplier for the first signal.
-    q : int
-        Frequency multiplier for the second signal.
-
-    Returns:
-    Synch_ind : numpy.ndarray or float
-        Phase locking value matrix if inputs are 2D arrays, otherwise a single float value.
-    """
-    # Calculate the phase of the Hilbert transform for both signals
-    phi_p = np.unwrap(np.angle(hilbert(x1, axis=0)))
-    phi_q = np.unwrap(np.angle(hilbert(x2, axis=0)))
-
-    # Get the dimensions of the input signals
-    N1 = x1.shape[1] if x1.ndim > 1 else 1
-    N2 = x2.shape[1] if x2.ndim > 1 else 1
-
-    # Initialize phase locking value based on input dimensions
-    if N1 > 1 and N2 > 1:
-        Synch_ind = np.zeros((N1, N2))
-        for k in range(N1):
-            for j in range(N2):
-                Psi_pq = np.mod(q * phi_p[:, k] - p * phi_q[:, j], 2 * np.pi)
-                Synch_ind[k, j] = np.abs(np.mean(np.exp(1j * Psi_pq)))
-    else:
-        Psi_pq = np.mod(q * phi_p - p * phi_q, 2 * np.pi)
-        Synch_ind = np.abs(np.mean(np.exp(1j * Psi_pq)))
-
-    return Synch_ind
-
-
-# Define vector mismatch function
-def vec_mismatch(v1, v2):
-    return 1 - np.abs(np.dot(v1, v2)) / (
-        np.sqrt(np.sum(v1**2)) * np.sqrt(np.sum(v2**2))
-    )
-
-
-# Define the negentropy function
-def negentropy(x):
-    return np.power(kurtosis(x) - 3, 2) / 48 + np.power(np.mean(np.power(x, 3)), 2) / 12
-
-
 # NID
 # ==============================================================================
 filt_num = filters['NID']
 print('NID')
 
-df1 = dip_freq1 / 10
-df2 = dip_freq2 / 10
-filter_order = 2
-f_base = 11
-f_m = 1
-f_n = 2
-n_sources = 2
-n_comp_ica = 2 * n_sources
-X = EEG['data']
+A1, A2, X_ssd1, X_ssd2 = nid(EEG['data'], f_base=11, p=1, q=2, n_sources=2)
 
-jade_flag = True
-e5_flag = True
-not_converge = [False, False]
-
-X_ssd1, A1, W1 = ssd_orig(
-    X, dip_freq1 - df1, dip_freq1 + df1, df1, n=n_sources, scale=True
-)
-X_ssd2, A2, W2 = ssd_orig(
-    X, dip_freq2 - df2, dip_freq2 + df2, df2, n=n_sources, scale=True
-)
-
-X_stacked = np.vstack([X_ssd1, X_ssd2])
-
-# %%
-if e5_flag:
-    # ica = FastICA(n_components=n_comp_ica, method='fastica', max_iter='auto')
-    # ica.fit(X_stacked.T)
-    # A_fica = ica.mixing_
-    ica = ICA(n_components=n_comp_ica, method='fastica', max_iter='auto')
-    ch_names_tmp = [f'CH{i}' for i in range(X_stacked.shape[0])]
-    info_tmp = create_info(ch_names=ch_names_tmp, sfreq=srate, ch_types='eeg')
-    raw_tmp = RawArray(X_stacked, info_tmp)
-    ica.fit(raw_tmp)
-    A_fica = ica.mixing_matrix_
-    X_stacked_ica_e5 = ica.apply(raw_tmp)._data
-
-if jade_flag:
-    A_jade = jadeR(X_stacked, n_comp_ica)
-    X_stacked_ica_jade = A_jade @ X_stacked
-
-A_final_1 = []
-A_final_2 = []
-for i in range(n_sources):
-    A = [A1, A2][i]
-    A_final_1.append(A @ A_fica[i * n_sources : (i + 1) * n_sources, :])
-    A_final_2.append(A @ A_jade[i * n_sources : (i + 1) * n_sources, :])
-
-A_final_1 = np.array(A_final_1)  # FastICA
-A_final_2 = np.array(A_final_2)  # JADE
-
-X_ssd1_e5 = (A_fica[:, :n_sources] @ X_ssd1).T
-X_ssd2_e5 = (A_fica[:, n_sources:] @ X_ssd2).T
-
-sync_e5 = phase_locking(X_ssd1_e5, X_ssd2_e5, f_m, f_n)
-
-X_ssd1_jade = (A_jade[:, :n_sources] @ X_ssd1).T
-X_ssd2_jade = (A_jade[:, n_sources:] @ X_ssd2).T
-
-sync_jade = phase_locking(X_ssd1_jade, X_ssd2_jade, f_m, f_n)
-
-
-K1, K2 = [], []
-K3 = list(range(n_comp_ica))
-
-# Double loop to calculate pattern angle for each pair
-for k in range(n_comp_ica - 1):
-    for j in range(k + 1, n_comp_ica):
-        err1 = vec_mismatch(A_final_1[0, :, k], A_final_1[0, :, j])
-        err2 = vec_mismatch(A_final_1[1, :, k], A_final_1[1, :, j])
-        if err1 < 0.1 and err2 < 0.1:
-            K1.append(k)
-            K2.append(j)
-
-# Compute negentropy and select minimum
-f1 = negentropy(X_stacked_ica_e5[K1, :].T)
-f2 = negentropy(X_stacked_ica_e5[K2, :].T)
-ii = np.argmin([f1, f2])
-# Ks1 = [K1, K2][ii]
-Ks1 = np.unique(np.array(K1) * (~ii) + np.array(K2) * ii)
-K3 = [k for k in K3 if k not in Ks1]
-
-# Calculate the synchronized factor and sort indices
-CC = np.diag(sync_e5)
-sort_indices = np.argsort(negentropy(X_stacked_ica_e5[K3, :].T) * CC[K3])[::-1]
-idx_src_e5 = [K3[i] for i in sort_indices[:n_sources]]
-
-K1, K2 = [], []
-K3 = list(range(n_comp_ica))
-
-# Double loop for jade pattern angle calculation
-for k in range(n_comp_ica - 1):
-    for j in range(k + 1, n_comp_ica):
-        err1 = vec_mismatch(A_final_2[0, :, k], A_final_2[0, :, j])
-        err2 = vec_mismatch(A_final_2[1, :, k], A_final_2[1, :, j])
-        if err1 < 0.1 and err2 < 0.1:
-            K1.append(k)
-            K2.append(j)
-
-# Compute negentropy and select minimum
-f1 = negentropy(X_stacked_ica_jade[K1, :].T)
-f2 = negentropy(X_stacked_ica_jade[K2, :].T)
-ii = np.argmin([f1, f2])
-Ks1 = np.unique(np.array(K1) * (~ii) + np.array(K2) * ii)
-K3 = [k for k in K3 if k not in Ks1]
-
-# Calculate the synchronized factor and sort indices
-CC = np.diag(sync_jade)
-sort_indices = np.argsort(negentropy(X_stacked_ica_jade[K3, :].T) * CC[K3])[::-1]
-idx_src_jade = [K3[i] for i in sort_indices[:n_sources]]
-
-# Initial variable settings
-St0 = 2
-Success = 1
-
-# Calculate negentropy for both methods
-negent_E5 = negentropy(X_stacked_ica_e5[idx_src_e5, :].T)
-negent_jade = negentropy(X_stacked_ica_jade[idx_src_jade, :].T)
-St0 = negent_jade.mean() >= negent_E5.mean()
-
-if St0 == 1:
-    print('JADE')
-    idx_src = idx_src_jade
-    sync = sync_jade
-    A_final_p = A_final_2[0, :, idx_src].T
-    A_final_q = A_final_2[1, :, idx_src].T
-elif St0 == 0:
-    print('fastICA')
-    idx_src = idx_src_e5
-    sync = sync_e5
-    A_final_p = A_final_1[0, :, idx_src].T
-    A_final_q = A_final_1[1, :, idx_src].T
-
-idx = np.argmax(np.abs(A_final_p[:, 0]))
-spat_maps[:, 0, 5, 0] = A_final_p[:, 0] * np.sign(A_final_p[idx, 0])
+idx = np.argmax(np.abs(A1[:, 0]))
+spat_maps[:, 0, 5, 0] = A1[:, 0] * np.sign(A1[idx, 0])
 corr_data[0, 5, 0] = np.corrcoef(X_ssd1[0, :], signal1)[0, 1] ** 2
 plvs[0, 5, 0] = compute_plv(X_ssd1[0, :], signal1)
 f = np.abs(fft(X_ssd1[0, :]) / EEG['pnts']) ** 2
 # snrs[0, 5, 0] = f[freq_idx] / np.mean(f[np.r_[f_low, f_high]])
 
-idx = np.argmax(np.abs(A_final_q[:, 0]))
-spat_maps[:, 1, 5, 0] = A_final_q[:, 0] * np.sign(A_final_q[idx, 0])
+idx = np.argmax(np.abs(A2[:, 0]))
+spat_maps[:, 1, 5, 0] = A2[:, 0] * np.sign(A2[idx, 0])
 corr_data[1, 5, 0] = np.corrcoef(X_ssd2[0, :], signal2)[0, 1] ** 2
 plvs[1, 5, 0] = compute_plv(X_ssd2[0, :], signal2)
 f = np.abs(fft(X_ssd2[0, :]) / EEG['pnts']) ** 2
